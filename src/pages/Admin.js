@@ -48,7 +48,7 @@ export default function Admin() {
               <TableCell>
                 <Select
                   value={order.status}
-                  onChange={(e) => updateStatus(order._id, e.target.value)}
+                  onChange={(e) => updateStatus(order._id, e.target.value) }
                   size="small"
                 >
                   {['PENDING', 'PAID', 'FULFILLED', 'CANCELLED'].map(status => (
