@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Container, Typography, TextField, Button, Box,
   Checkbox, FormControlLabel, Card, CardContent, Snackbar, Alert
@@ -26,27 +26,21 @@ export default function Customer() {
 
   const handleSubmit = async () => {
     if (!customer.name || !customer.email || !customer.phone) {
-      setSnackbar({ open: true, message: 'Fill all customer details', severity: 'warning' });
-      return;
+      return setSnackbar({ open: true, message: 'Fill all customer details', severity: 'warning' });
     }
 
     const validItems = items.filter(item => item.name.trim() !== '' && item.quantity > 0);
     if (validItems.length === 0) {
-      setSnackbar({ open: true, message: 'Add at least one product with valid quantity', severity: 'warning' });
-      return;
+      return setSnackbar({ open: true, message: 'Add at least one product with valid quantity', severity: 'warning' });
     }
 
     try {
-      const custRes = await api.post('/customers', customer);
-
-      const orderItems = validItems.map(item => ({
-        product: item.name.trim(), // assuming backend can accept product name or map it
-        quantity: Number(item.quantity),
-      }));
-
       const orderRes = await api.post('/orders', {
-        customer: custRes.data._id,
-        items: orderItems,
+        customer, // now sends name, email, phone directly
+        items: validItems.map(item => ({
+          product: item.name.trim(), // backend resolves this to product ID
+          quantity: Number(item.quantity),
+        })),
         paymentReceived,
       });
 
@@ -55,14 +49,14 @@ export default function Customer() {
       setSnackbar({ open: true, message: '✅ Order placed successfully!', severity: 'success' });
     } catch (err) {
       console.error(err);
-      setSnackbar({ open: true, message: 'Order submission failed', severity: 'error' });
+      setSnackbar({ open: true, message: err.response?.data?.error || 'Order submission failed', severity: 'error' });
     }
   };
 
   const fetchOrder = async () => {
     try {
       const res = await api.get('/orders');
-      const found = res.data.find(o => o._id === orderId);
+      const found = res.data.orders.find(o => o._id === orderId);
       setOrder(found || null);
     } catch (err) {
       console.error(err);
@@ -157,7 +151,7 @@ export default function Customer() {
               <ul>
                 {order.items.map((item, index) => (
                   <li key={index}>
-                    {item.product.name} × {item.quantity}
+                    {item.product?.name} × {item.quantity}
                   </li>
                 ))}
               </ul>
@@ -171,7 +165,9 @@ export default function Customer() {
         autoHideDuration={4000}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
       >
-        <Alert severity={snackbar.severity}>{snackbar.message}</Alert>
+        <Alert severity={snackbar.severity}>
+          {snackbar.message}
+        </Alert>
       </Snackbar>
     </Container>
   );
