@@ -1,65 +1,190 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
-  Container, Typography, Table, TableHead, TableRow,
-  TableCell, TableBody, Select, MenuItem,
+  Container, Typography, Card, CardContent, MenuItem,
+  Select, FormControl, InputLabel, Snackbar, Alert,
+  Grid, Box, TextField, Button, CircularProgress
 } from '@mui/material';
-import OrderStatusBadge from '../components/OrderStatusBadge';
 import api from '../api/axios';
-import io from 'socket.io-client';
-
-const socket = io('http://localhost:8080');
+import OrderStatusBadge from '../components/OrderStatusBadge';
+import socket from '../socket'; // 🔁 centralized socket
 
 export default function Admin() {
   const [orders, setOrders] = useState([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [nameFilter, setNameFilter] = useState('');
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const observerRef = useRef();
 
-  const fetchOrders = async () => {
-    const res = await api.get('/orders');
-    setOrders(res.data);
-  };
-
-  const updateStatus = async (id, status) => {
-    await api.patch(`/orders/${id}/status`, { status });
-  };
-
+  // Initial + paginated load
   useEffect(() => {
-    fetchOrders();
-    socket.on('order-updated', fetchOrders);
-    return () => socket.off('order-updated');
+    loadOrders(page);
+  }, [page]);
+
+  // Live WebSocket listeners
+  useEffect(() => {
+    socket.on('order-updated', () => resetAndReload());
+    socket.on('order-created', () => resetAndReload());
+    return () => {
+      socket.off('order-updated');
+      socket.off('order-created');
+    };
   }, []);
 
+  const loadOrders = async (pageNum) => {
+    if (loading || !hasMore) return;
+    setLoading(true);
+    try {
+      const res = await api.get(`/orders?page=${pageNum}&limit=5`);
+      const newOrders = res.data.orders || res.data;
+      setOrders(prev => [...prev, ...newOrders]);
+      if (newOrders.length < 5) setHasMore(false);
+    } catch (err) {
+      setSnackbar({ open: true, message: 'Error loading orders', severity: 'error' });
+    }
+    setLoading(false);
+  };
+
+  const resetAndReload = () => {
+    setOrders([]);
+    setPage(1);
+    setHasMore(true);
+  };
+
+  const handleStatusChange = async (orderId, newStatus) => {
+    try {
+      await api.patch(`/orders/${orderId}/status`, { status: newStatus });
+      setSnackbar({ open: true, message: 'Status updated', severity: 'success' });
+      resetAndReload();
+    } catch (err) {
+      setSnackbar({ open: true, message: 'Update failed', severity: 'error' });
+    }
+  };
+
+  const exportCSV = () => {
+    const header = ['Order ID', 'Order Name', 'Customer Name', 'Status', 'Payment', 'Items'];
+    const rows = orders.map(order => {
+      const items = order.items.map(item => `${item.product?.name} x ${item.quantity}`).join('; ');
+      return [
+        order._id,
+        order.orderName || '',
+        order.customer?.name || '',
+        order.status,
+        order.paymentReceived ? 'Yes' : 'No',
+        items,
+      ];
+    });
+    const csv = [header, ...rows].map(row => row.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'orders.csv';
+    link.click();
+  };
+
+  const filtered = orders.filter(order => {
+    const nameMatch = order.customer?.name?.toLowerCase().includes(nameFilter.toLowerCase());
+    const statusMatch = statusFilter ? order.status === statusFilter : true;
+    return nameMatch && statusMatch;
+  });
+
+  const lastOrderRef = (node) => {
+    if (loading) return;
+    if (observerRef.current) observerRef.current.disconnect();
+    observerRef.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore) {
+        setPage(prev => prev + 1);
+      }
+    });
+    if (node) observerRef.current.observe(node);
+  };
+
   return (
-    <Container>
-      <Typography variant="h5" gutterBottom>All Orders</Typography>
-      <Table>
-        <TableHead>
-          <TableRow>
-            <TableCell>ID</TableCell>
-            <TableCell>Customer</TableCell>
-            <TableCell>Status</TableCell>
-            <TableCell>Update</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {orders.map(order => (
-            <TableRow key={order._id}>
-              <TableCell>{order._id}</TableCell>
-              <TableCell>{order.customer?.name}</TableCell>
-              <TableCell><OrderStatusBadge status={order.status} /></TableCell>
-              <TableCell>
-                <Select
-                  value={order.status}
-                  onChange={(e) => updateStatus(order._id, e.target.value) }
-                  size="small"
-                >
-                  {['PENDING', 'PAID', 'FULFILLED', 'CANCELLED'].map(status => (
-                    <MenuItem value={status} key={status}>{status}</MenuItem>
-                  ))}
-                </Select>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+    <Container sx={{ mt: 4 }}>
+      <Typography variant="h5" gutterBottom>🧑‍💼 Admin Order Dashboard</Typography>
+
+      <Box display="flex" flexWrap="wrap" gap={2} mt={2}>
+        <TextField
+          label="Search Customer"
+          value={nameFilter}
+          onChange={(e) => setNameFilter(e.target.value)}
+          size="small"
+        />
+        <FormControl size="small" sx={{ minWidth: 150 }}>
+          <InputLabel>Status</InputLabel>
+          <Select
+            label="Status"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <MenuItem value="">All</MenuItem>
+            {['Placed', 'Picked', 'Shipped', 'Delivered'].map(status => (
+              <MenuItem key={status} value={status}>{status}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <Button variant="outlined" onClick={exportCSV}>📤 Export CSV</Button>
+      </Box>
+
+      <Grid container spacing={2} mt={2}>
+        {filtered.map((order, index) => (
+          <Grid
+            item xs={12} md={6}
+            key={order._id}
+            ref={index === filtered.length - 1 ? lastOrderRef : null}
+          >
+            <Card variant="outlined">
+              <CardContent>
+                <Typography variant="h6">Order ID: {order._id}</Typography>
+                {order.orderName && (
+                  <Typography variant="subtitle1">Order Name: {order.orderName}</Typography>
+                )}
+                <Typography variant="body2">Customer: {order.customer?.name} ({order.customer?.email})</Typography>
+                <Box mt={1}>
+                  <Typography variant="body2">Status: <OrderStatusBadge status={order.status} /></Typography>
+                  <FormControl size="small" fullWidth sx={{ mt: 1 }}>
+                    <InputLabel>Update Status</InputLabel>
+                    <Select
+                      label="Update Status"
+                      value={order.status}
+                      onChange={(e) => handleStatusChange(order._id, e.target.value)}
+                    >
+                      {['Placed', 'Picked', 'Shipped', 'Delivered'].map(status => (
+                        <MenuItem key={status} value={status}>{status}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Box>
+                <Typography variant="body2" sx={{ mt: 1 }}>
+                  Items:
+                  <ul>
+                    {order.items.map(item => (
+                      <li key={item.product?._id}>
+                        {item.product?.name} × {item.quantity}
+                      </li>
+                    ))}
+                  </ul>
+                </Typography>
+                <Typography variant="body2">
+                  Payment: {order.paymentReceived ? '✅ Received' : '❌ Not Received'}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+
+      {loading && <CircularProgress sx={{ display: 'block', margin: '20px auto' }} />}
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+      >
+        <Alert severity={snackbar.severity}>{snackbar.message}</Alert>
+      </Snackbar>
     </Container>
   );
 }
