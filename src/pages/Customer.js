@@ -1,37 +1,36 @@
 import React, { useEffect, useState } from 'react';
 import {
   Container, Typography, TextField, Button, Card, CardContent,
-  MenuItem, Checkbox, FormControlLabel, Grid, Snackbar, Alert,
+  Checkbox, FormControlLabel, Grid, Snackbar, Alert,
 } from '@mui/material';
 import api from '../api/axios';
 import OrderStatusBadge from '../components/OrderStatusBadge';
 
 export default function Customer() {
-  const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
-  const [selectedCustomer, setSelectedCustomer] = useState('');
   const [selectedProducts, setSelectedProducts] = useState({});
   const [paymentReceived, setPaymentReceived] = useState(false);
   const [orderId, setOrderId] = useState('');
   const [order, setOrder] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
-  // Fetch customers and products
+  const [customer, setCustomer] = useState({
+    name: '',
+    email: '',
+    phone: '',
+  });
+
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchProducts = async () => {
       try {
-        const [custRes, prodRes] = await Promise.all([
-          api.get('/customers'),
-          api.get('/products'),
-        ]);
-        setCustomers(custRes.data);
-        setProducts(prodRes.data);
+        const res = await api.get('/products');
+        setProducts(res.data);
       } catch (err) {
         console.error(err);
-        setSnackbar({ open: true, message: 'Error loading data', severity: 'error' });
+        setSnackbar({ open: true, message: 'Failed to load products', severity: 'error' });
       }
     };
-    fetchData();
+    fetchProducts();
   }, []);
 
   const handleProductChange = (productId, quantity) => {
@@ -46,22 +45,27 @@ export default function Customer() {
       .filter(([_, qty]) => qty > 0)
       .map(([productId, quantity]) => ({ product: productId, quantity: Number(quantity) }));
 
-    if (!selectedCustomer || items.length === 0) {
-      setSnackbar({ open: true, message: 'Select customer and at least one product', severity: 'warning' });
+    if (!customer.name || !customer.email || !customer.phone || items.length === 0) {
+      setSnackbar({ open: true, message: 'Fill all fields and select at least one product', severity: 'warning' });
       return;
     }
 
     try {
-      const res = await api.post('/orders', {
-        customer: selectedCustomer,
+      // Create customer
+      const custRes = await api.post('/customers', customer);
+
+      // Create order
+      const orderRes = await api.post('/orders', {
+        customer: custRes.data._id,
         items,
         paymentReceived,
       });
-      setOrderId(res.data._id);
+
+      setOrderId(orderRes.data._id);
       setSnackbar({ open: true, message: '✅ Order placed successfully!', severity: 'success' });
     } catch (err) {
       console.error(err);
-      setSnackbar({ open: true, message: 'Failed to place order', severity: 'error' });
+      setSnackbar({ open: true, message: 'Order failed', severity: 'error' });
     }
   };
 
@@ -77,24 +81,31 @@ export default function Customer() {
 
   return (
     <Container sx={{ mt: 4 }}>
-      <Typography variant="h5" gutterBottom>🛒 Place a New Order</Typography>
+      <Typography variant="h5" gutterBottom>🛒 Place Your Order</Typography>
 
       <TextField
-        select
-        label="Select Customer"
-        value={selectedCustomer}
-        onChange={(e) => setSelectedCustomer(e.target.value)}
+        label="Full Name"
         fullWidth
+        value={customer.name}
+        onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
         margin="normal"
-      >
-        {customers.map(cust => (
-          <MenuItem key={cust._id} value={cust._id}>
-            {cust.name} ({cust.email})
-          </MenuItem>
-        ))}
-      </TextField>
+      />
+      <TextField
+        label="Email"
+        fullWidth
+        value={customer.email}
+        onChange={(e) => setCustomer({ ...customer, email: e.target.value })}
+        margin="normal"
+      />
+      <TextField
+        label="Phone"
+        fullWidth
+        value={customer.phone}
+        onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
+        margin="normal"
+      />
 
-      <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>Select Products:</Typography>
+      <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>Select Products:</Typography>
       <Grid container spacing={2}>
         {products.map(product => (
           <Grid item xs={12} sm={6} md={4} key={product._id}>
