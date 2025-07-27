@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
-import { AppBar, Toolbar, Button } from '@mui/material';
+import { AppBar, Toolbar, Button, Container } from '@mui/material';
 import Customer from './pages/Customer';
 import Admin from './pages/Admin';
 
@@ -13,10 +13,13 @@ export default function App() {
           <Button color="inherit" component={Link} to="/admin">Admin</Button>
         </Toolbar>
       </AppBar>
-      <Routes>
-        <Route path="/" element={<Customer />} />
-        <Route path="/admin" element={<Admin />} />
-      </Routes>
+
+      <Container sx={{ mt: 4 }}>
+        <Routes>
+          <Route path="/" element={<Customer />} />
+          <Route path="/admin" element={<Admin />} />
+        </Routes>
+      </Container>
     </BrowserRouter>
   );
 }
