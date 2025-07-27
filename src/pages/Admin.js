@@ -120,7 +120,7 @@ export default function Admin() {
             onChange={(e) => setStatusFilter(e.target.value)}
           >
             <MenuItem value="">All</MenuItem>
-            {['Placed', 'Picked', 'Shipped', 'Delivered'].map(status => (
+            {['PENDING','PAID','FULFILLED','CANCELLED'].map(status => (
               <MenuItem key={status} value={status}>{status}</MenuItem>
             ))}
           </Select>
