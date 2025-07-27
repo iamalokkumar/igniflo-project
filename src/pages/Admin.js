@@ -151,7 +151,7 @@ export default function Admin() {
                       value={order.status}
                       onChange={(e) => handleStatusChange(order._id, e.target.value)}
                     >
-                      {['Placed', 'Picked', 'Shipped', 'Delivered'].map(status => (
+                      {['PENDING','PAID','FULFILLED','CANCELLED'].map(status => (
                         <MenuItem key={status} value={status}>{status}</MenuItem>
                       ))}
                     </Select>
