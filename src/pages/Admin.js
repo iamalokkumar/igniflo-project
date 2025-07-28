@@ -6,7 +6,7 @@ import {
 } from '@mui/material';
 import api from '../api/axios';
 import OrderStatusBadge from '../components/OrderStatusBadge';
-import socket from '../socket'; // 🔁 centralized socket
+import socket from '../socket';
 
 export default function Admin() {
   const [orders, setOrders] = useState([]);
@@ -18,28 +18,30 @@ export default function Admin() {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const observerRef = useRef();
 
-  // Initial + paginated load
+  // Fetch orders on page change
   useEffect(() => {
     loadOrders(page);
   }, [page]);
 
-  // Live WebSocket listeners
+  // Listen for WebSocket updates
   useEffect(() => {
-    socket.on('order-updated', () => resetAndReload());
-    socket.on('order-created', () => resetAndReload());
+    socket.on('order-updated', resetAndReload);
+    socket.on('order-created', resetAndReload);
     return () => {
-      socket.off('order-updated');
-      socket.off('order-created');
+      socket.off('order-updated', resetAndReload);
+      socket.off('order-created', resetAndReload);
     };
   }, []);
 
   const loadOrders = async (pageNum) => {
-    if (loading || !hasMore) return;
+    if (loading) return;
+    if (!hasMore && pageNum !== 1) return;
+
     setLoading(true);
     try {
       const res = await api.get(`/orders?page=${pageNum}&limit=5`);
       const newOrders = res.data.orders || res.data;
-      setOrders(prev => [...prev, ...newOrders]);
+      setOrders(prev => (pageNum === 1 ? newOrders : [...prev, ...newOrders]));
       if (newOrders.length < 5) setHasMore(false);
     } catch (err) {
       setSnackbar({ open: true, message: 'Error loading orders', severity: 'error' });
@@ -47,11 +49,11 @@ export default function Admin() {
     setLoading(false);
   };
 
-  const resetAndReload = () => {
+  const resetAndReload = async () => {
     setOrders([]);
     setPage(1);
     setHasMore(true);
-    setTimeout(() => setPage(1), 0);
+    await loadOrders(1); // Reload page 1 orders
   };
 
   const handleStatusChange = async (orderId, newStatus) => {
@@ -121,7 +123,7 @@ export default function Admin() {
             onChange={(e) => setStatusFilter(e.target.value)}
           >
             <MenuItem value="">All</MenuItem>
-            {['PENDING','PAID','FULFILLED','CANCELLED'].map(status => (
+            {['PENDING', 'PAID', 'FULFILLED', 'CANCELLED'].map(status => (
               <MenuItem key={status} value={status}>{status}</MenuItem>
             ))}
           </Select>
@@ -152,7 +154,7 @@ export default function Admin() {
                       value={order.status}
                       onChange={(e) => handleStatusChange(order._id, e.target.value)}
                     >
-                      {['PENDING','PAID','FULFILLED','CANCELLED'].map(status => (
+                      {['PENDING', 'PAID', 'FULFILLED', 'CANCELLED'].map(status => (
                         <MenuItem key={status} value={status}>{status}</MenuItem>
                       ))}
                     </Select>
