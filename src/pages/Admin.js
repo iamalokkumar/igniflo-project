@@ -51,6 +51,7 @@ export default function Admin() {
     setOrders([]);
     setPage(1);
     setHasMore(true);
+    setTimeout(() => setPage(1), 0);
   };
 
   const handleStatusChange = async (orderId, newStatus) => {
